@@ -157,19 +157,27 @@ class MainWindow(QMainWindow):
                 current_grk_id = combined.at[index, 'GRK Nummer']
                 # brute force find the correct new folder to copy. It was painful to do it like this
                 for patient in patients:
-                    pat_data = patient[1]
-                    date_string = f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"
-                    if (pat_data[5] == pat_id) and (op_date == f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"):
-                        folders_to_copy.append((f"grk_{int(current_grk_id):04d}", date_string, patient[0]))
+                    pat_data = patient[1][1:]
+                    patient_key = patient[1][0]
+                    if patient_key == 'full_info':
+                        date_string = f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"
+                        if (pat_data[5] == pat_id) and (op_date == f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"):
+                            folders_to_copy.append((f"grk_{int(current_grk_id):04d}", date_string, patient[0]))
+                    elif patient_key == 'name_id_opdate_time':
+                        date_string = f"{pat_data[5]}.{pat_data[4]}.{pat_data[3]}"
+                        if (pat_data[2] == pat_id) and (op_date == f"{pat_data[5]}.{pat_data[4]}.{pat_data[3]}"):
+                            folders_to_copy.append((f"grk_{int(current_grk_id):04d}", date_string, patient[0]))
         src = []
         dst = []
         for new_data_to_copy in folders_to_copy:
             copy_dest = os.path.join(destination, new_data_to_copy[0])
             if not os.path.exists(copy_dest):
                 os.makedirs(copy_dest)
-            src_files = [str(x) for x in Path(new_data_to_copy[-1]).rglob("*[0-9].*") if image_match(x) is not None or video_match(x) is not None]
+            p = Path(new_data_to_copy[-1]).glob("**/*")
+            files = [x for x in p if x.is_file()]
+            src_files = [str(x) for x in files if image_match(x) is not None or video_match(x) is not None]
             src.extend(src_files)
-            dst.extend([os.path.join(destination, new_data_to_copy[0], new_data_to_copy[1], x[len(new_data_to_copy[-1])+1:]).replace("\\", "/") for x in src_files])
+            dst.extend([os.path.join(destination, new_data_to_copy[0], new_data_to_copy[1], x[len(new_data_to_copy[-1]) + 1:]).replace("\\", "/") for x in src_files])
         self.copier.set_files_to_copy(src, dst)
         self.combined_df = combined
         self.progress.show()

@@ -6,13 +6,10 @@ from collections import defaultdict
 import os
 import re
 
-source_folder = r'C:\Users\Somers\Desktop\fake_patient'
-excel_file = 'test.xlsx'
-destination_folder = r'C:\Users\Somers\Desktop\test'
-
-
 divider = os.path.sep if os.path.sep != "\\" else os.path.sep * 2
-patient_pattern = ".*" + divider +"(.*?)_(.*?)_(\d{4}?)(\d{2}?)(\d{2}?)_(\d{7}-\d{1}?)_(\d{4}?)(\d{2}?)(\d{2}?)_\d{6}(\d{2}?)(\d{2}?).*"
+patient_patterns = {'full_info': ".*" + divider +"(.*?)_(.*?)_(\d{4}?)(\d{2}?)(\d{2}?)_(.*?)_(\d{4}?)(\d{2}?)(\d{2}?)_\d{6}(\d{2}?)(\d{2}?).*",
+                    'name_id_opdate_time': ".*" + divider +"(.*?)_(.*?)_(.*?)_(\d{4}?)(\d{2}?)(\d{2}?)_(\d{2}?)(\d{2}?)(\d+).*"
+                    }
 EXCEL_HEADERS = ["GRK Nummer", "Name", "Geburtsdatum", "OP-Datum", "Patient-ID"]
 
 
@@ -35,7 +32,7 @@ def get_df_from_excel(filename) -> pd.DataFrame:
     return pd.DataFrame(data, columns=columns)
 
 
-def get_patients_from_folders(folder) -> List[Tuple[str, Tuple[str]]]:
+def get_patients_from_folders(folder) -> List[Tuple[str, List[str]]]:
     """
     Given a folder, will search for all subfolders with the Storz folder naming and return them.
     Parameters
@@ -48,22 +45,44 @@ def get_patients_from_folders(folder) -> List[Tuple[str, Tuple[str]]]:
 
     """
     files_folders = [str(x) for x in Path(folder).rglob("*[0-9].*")]
-    regex_term = re.compile(patient_pattern)
-    directories = set([x.string[:x.regs[-1][1]] for x in map(regex_term.fullmatch, files_folders) if x])
-    matches = [x[0] for x in map(regex_term.findall, directories) if x]
-    return list(zip(directories, matches))
+    patients_to_return = []
+    for key in patient_patterns:
+        regex_term = re.compile(patient_patterns[key])
+        directories = set([x.string[:x.regs[-1][1]] for x in map(regex_term.fullmatch, files_folders) if x])
+        matches = [[key] + list(x[0]) for x in map(regex_term.findall, directories) if x]
+        patients_to_return.extend(list(zip(directories, matches)))
+    return patients_to_return
 
 
 def convert_patient_info_to_df(patients):
     """ get data as dictionary """
     df_dict = defaultdict(list)
+    patients_to_remove = []
     for patient in patients:
         data = patient[1]
-        df_dict['GRK Nummer'].append(None)
-        df_dict['Name'].append(f"{data[0]}, {data[1]}")
-        df_dict['Geburtsdatum'].append(f"{data[4]}.{data[3]}.{data[2]}")
-        df_dict['OP-Datum'].append(f"{data[8]}.{data[7]}.{data[6]}")
-        df_dict['Patient-ID'].append(f"{data[5]}")
+        key = data[0]
+        data = data[1:]
+
+        if key == 'full_info':
+            if data[5] == '':
+                patients_to_remove.append(patient)
+                continue
+            df_dict['GRK Nummer'].append(None)
+            df_dict['Name'].append(f"{data[0]}, {data[1]}")
+            df_dict['Geburtsdatum'].append(f"{data[4]}.{data[3]}.{data[2]}")
+            df_dict['OP-Datum'].append(f"{data[8]}.{data[7]}.{data[6]}")
+            df_dict['Patient-ID'].append(f"{data[5]}")
+        elif key == 'name_id_opdate_time':
+            if data[2] == '' or data[2].find('_') >= 0:
+                patients_to_remove.append(patient)
+                continue
+            df_dict['Patient-ID'].append(f"{data[2]}")
+            df_dict['GRK Nummer'].append(None)
+            df_dict['Name'].append(f"{data[0]}, {data[1]}")
+            df_dict['Geburtsdatum'].append(f"{0}.{0}.{0}")  # no birthdate available
+            df_dict['OP-Datum'].append(f"{data[5]}.{data[4]}.{data[3]}")
+
+    [patients.remove(x) for x in patients_to_remove]
     return df_dict
 
 

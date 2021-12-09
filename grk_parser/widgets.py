@@ -135,11 +135,15 @@ class MainWindow(QMainWindow):
 
         folders_to_copy = []
         duplicated_patients = combined[combined['Patient-ID'].duplicated(keep=False) == True]
+        duplicated_name_and_birth = combined[combined.duplicated(subset=['Name', 'Geburtsdatum'], keep=False) == True]
 
         for index, row in combined.iterrows():
             if pd.isnull(combined.at[index, 'GRK Nummer']):
                 pat_id = combined.at[index, 'Patient-ID']
                 op_date = combined.at[index, 'OP-Datum']
+                bdate = combined.at[index, 'Geburtsdatum']
+                pname = combined.at[index, 'Name']
+
                 if duplicated_patients.isin({'Patient-ID': [pat_id]})["Patient-ID"].any():
                     existing_ids = duplicated_patients[duplicated_patients['Patient-ID'] == pat_id]
                     existing_id = existing_ids[existing_ids["GRK Nummer"].isnull() == False]
@@ -149,24 +153,28 @@ class MainWindow(QMainWindow):
                         duplicated_patients = combined[combined['Patient-ID'].duplicated(keep=False) == True]
                     else:
                         combined.at[index, 'GRK Nummer'] = existing_id['GRK Nummer'].iat[0]
+                elif duplicated_name_and_birth.isin({'Name': [pname], 'Geburtsdatum': [bdate]})['Name'].any():
+                    print(pname)
+                    existing_ids = duplicated_name_and_birth[duplicated_name_and_birth['Name'] == pname]
+                    existing_id = existing_ids[existing_ids["GRK Nummer"].isnull() == False]
+                    if existing_id.empty:
+                        max_grk_id += 1
+                        combined.at[index, 'GRK Nummer'] = max_grk_id
+                        duplicated_name_and_birth = combined[combined.duplicated(subset=['Name', 'Geburtsdatum'], keep=False) == True]
+                    else:
+                        combined.at[index, 'GRK Nummer'] = existing_id['GRK Nummer'].iat[0]
+                    pass
                 else:
                     max_grk_id += 1
                     combined.at[index, 'GRK Nummer'] = max_grk_id
                     duplicated_patients = combined[combined['Patient-ID'].duplicated(keep=False) == True]
+                    duplicated_name_and_birth = combined[combined.duplicated(subset=['Name', 'Geburtsdatum'], keep=False) == True]
 
                 current_grk_id = combined.at[index, 'GRK Nummer']
-                # brute force find the correct new folder to copy. It was painful to do it like this
+
                 for patient in patients:
-                    pat_data = patient[1][1:]
-                    patient_key = patient[1][0]
-                    if patient_key == 'full_info':
-                        date_string = f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"
-                        if (pat_data[5] == pat_id) and (op_date == f"{pat_data[8]}.{pat_data[7]}.{pat_data[6]}"):
-                            folders_to_copy.append((f"grk_{int(current_grk_id):04d}", date_string, patient[0]))
-                    elif patient_key == 'name_id_opdate_time':
-                        date_string = f"{pat_data[5]}.{pat_data[4]}.{pat_data[3]}"
-                        if (pat_data[2] == pat_id) and (op_date == f"{pat_data[5]}.{pat_data[4]}.{pat_data[3]}"):
-                            folders_to_copy.append((f"grk_{int(current_grk_id):04d}", date_string, patient[0]))
+                    if patient['Patient-ID'] == pat_id and patient['OP-Datum'] == op_date:
+                        folders_to_copy.append((f"grk_{int(current_grk_id):04d}", patient['OP-Datum'], patient['folder_dir']))
         src = []
         dst = []
         for new_data_to_copy in folders_to_copy:
